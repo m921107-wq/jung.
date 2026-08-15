@@ -637,30 +637,17 @@ function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 selSubj('재무회계');
 // persistent storage에서 저장된 풀이 데이터 로드
 loadStorage();
-</script>
-  // 1. 저장된 풀이 기록 불러오기
-function loadProgress() {
-  const savedData = localStorage.getItem('jaekyung_quiz_answers');
-  return savedData ? JSON.parse(savedData) : {};
-}
-
-// 2. 답안 클릭 시 브라우저(localStorage)에 자동 저장
-function saveAnswer(questionId, selectedAnswer) {
-  const currentAnswers = loadProgress();
-  currentAnswers[questionId] = selectedAnswer;
-  localStorage.setItem('jaekyung_quiz_answers', JSON.stringify(currentAnswers));
-}
-
-// 3. 페이지가 켜지거나 새로고침될 때 기존 풀이 표시하기
-window.addEventListener('DOMContentLoaded', () => {
-  const savedAnswers = loadProgress();
-  
-  // 저장된 답안이 있으면 화면의 해당 문제 체크 상태 복원
-  Object.keys(savedAnswers).forEach(qId => {
-    const answer = savedAnswers[qId];
-    // 기존 코드의 답안 표시 함수를 호출하거나 클래스 추가
-    // 예: checkSavedOption(qId, answer);
-  });
+  // iOS/아이패드 사파리 호환을 위한 자동 저장 보완 코드
+window.addEventListener('pagehide', () => {
+  if (typeof saveStorage === 'function') {
+    saveStorage();
+  }
 });
-</body>
+
+// 화면이 숨겨지거나(탭 이동 등) 상태가 바뀔 때 즉시 저장
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && typeof saveStorage === 'function') {
+    saveStorage();
+  }
+});
 </html>
