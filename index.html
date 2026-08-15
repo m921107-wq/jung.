@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>재경관리사 기출문제 2024·2025</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 :root{
@@ -64,6 +65,26 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
 .tbtn:active{background:var(--g1);}
 .tbtn.on{background:var(--g9);color:#fff;border-color:var(--g9);}
 #bwrong.on{background:var(--red);border-color:var(--red);color:#fff;}
+
+/* AI 해설 */
+.ai-exp-wrap{padding:0 12px 12px;}
+.ai-exp-btn{width:100%;padding:9px;border:1.5px dashed var(--red);border-radius:10px;
+  font-size:13px;font-weight:600;color:var(--red);background:var(--red-lt);
+  cursor:pointer;transition:.15s;}
+.ai-exp-btn:disabled{opacity:.55;cursor:not-allowed;}
+.ai-exp-btn.done{border-style:solid;background:#fff;color:var(--g7);border-color:var(--g3);}
+.ai-exp-body{margin-top:10px;padding:14px;background:#fffdf5;border:1px solid #f0e0a0;
+  border-radius:10px;font-size:13px;line-height:1.75;color:var(--g9);}
+.ai-exp-body h2{font-size:13.5px;font-weight:700;margin:12px 0 5px;color:var(--g9);}
+.ai-exp-body h2:first-child{margin-top:0;}
+.ai-exp-body p{margin:4px 0;}
+.ai-exp-body ul,.ai-exp-body ol{padding-left:18px;margin:4px 0;}
+.ai-exp-body li{margin:2px 0;}
+.ai-exp-body strong{color:var(--g9);}
+.ai-exp-body code{background:var(--g1);padding:1px 5px;border-radius:4px;font-size:12px;}
+.ai-exp-body .ai-cursor{display:inline-block;width:2px;height:1em;background:var(--red);
+  vertical-align:text-bottom;animation:blink .7s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 #pen-btn.on{background:#f57f17;color:#fff;border-color:#f57f17;}
 
 /* 펜 툴바 */
@@ -236,6 +257,118 @@ let curS=null, curC=null, curY='all', curF='all', srchQ='';
 const ST  = {}; // {id:{sel,sub}} - persistent storage에서 로드
 const CVD = {}; // {id:dataURL}
 let _storageReady = false;
+
+// ── AI 해설 ──
+const EXPL_CACHE = {}; // qid → 해설 텍스트 캐시
+
+async function loadExpl(id, answer, btn){
+  const bodyEl = document.getElementById('EB_body'+id);
+  if(!bodyEl) return;
+
+  // 이미 캐시된 해설
+  if(EXPL_CACHE[id]){
+    bodyEl.style.display='block';
+    bodyEl.innerHTML = marked(EXPL_CACHE[id]);
+    btn.textContent='✅ AI 해설 닫기';
+    btn.classList.add('done');
+    btn.onclick = ()=>{
+      const shown = bodyEl.style.display!=='none';
+      bodyEl.style.display = shown?'none':'block';
+      btn.textContent = shown?'✅ AI 해설 보기':'✅ AI 해설 닫기';
+    };
+    return;
+  }
+
+  // 문제 텍스트 찾기
+  const cardEl = document.getElementById('C'+id);
+  const qbody = cardEl?.querySelector('.qbody')?.innerText||'';
+  const choices = cardEl?.querySelector('.choices')?.innerText||'';
+  const st = ST[id]||{};
+  const userSel = st.sel||'?';
+
+  btn.disabled = true;
+  btn.textContent = '⏳ AI 해설 생성 중...';
+  bodyEl.style.display = 'block';
+  bodyEl.innerHTML = '<span class="ai-cursor"></span>';
+
+  const prompt = `당신은 재경관리사(재무회계·세무회계·원가관리회계) 전문 강사입니다.
+아래 문제에 대해 수험생이 틀렸습니다. 상세한 해설을 작성해주세요.
+
+[문제]
+${qbody}
+
+[선택지]
+${choices}
+
+[정답] ${answer}번
+[수험생 선택] ${userSel}번 (오답)
+
+다음 형식으로 해설해주세요:
+## ✅ 정답: ${answer}번
+
+## 📌 핵심 개념
+(이 문제와 관련된 핵심 회계/세무/원가 개념 설명)
+
+## 🔍 정답 해설
+(왜 ${answer}번이 정답인지 상세 설명)
+
+## ❌ 오답 분석
+(수험생이 선택한 ${userSel}번이 왜 틀렸는지 설명)
+
+## 💡 출제 포인트
+(이 유형에서 자주 나오는 함정 또는 기억할 공식/원칙)`;
+
+  let full = '';
+  try{
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1200,
+        stream:true,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    bodyEl.innerHTML = '<span class="ai-cursor"></span>';
+
+    while(true){
+      const {done,value} = await reader.read();
+      if(done) break;
+      const chunk = dec.decode(value);
+      for(const line of chunk.split('\n')){
+        if(!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if(data==='[DONE]') break;
+        try{
+          const j = JSON.parse(data);
+          if(j.type==='content_block_delta'&&j.delta?.text){
+            full += j.delta.text;
+            bodyEl.innerHTML = marked(full) + '<span class="ai-cursor"></span>';
+            bodyEl.scrollTop = bodyEl.scrollHeight;
+          }
+        }catch(_){}
+      }
+    }
+    bodyEl.innerHTML = marked(full);
+    EXPL_CACHE[id] = full;
+    btn.disabled = false;
+    btn.textContent = '✅ AI 해설 닫기';
+    btn.classList.add('done');
+    btn.onclick = ()=>{
+      const shown = bodyEl.style.display!=='none';
+      bodyEl.style.display = shown?'none':'block';
+      btn.textContent = shown?'✅ AI 해설 보기':'✅ AI 해설 닫기';
+    };
+  } catch(e){
+    bodyEl.innerHTML = `<span style="color:var(--red)">해설 생성 중 오류가 발생했습니다. 다시 시도해주세요.<br><small>${e.message}</small></span>`;
+    btn.disabled = false;
+    btn.textContent = '🔄 다시 시도';
+  }
+}
 
 async function saveST(){
   try{ await window.storage.set('jk4', JSON.stringify(ST)); }
@@ -418,6 +551,10 @@ function cardHTML(q,tag,clr){
       <span class="abox" id="A${id}">정답 ${q.answer}번</span>
       <button class="rst-btn" onclick="resetCard('${id}')">↺ 초기화</button>
     </div>
+    ${curS_wrong ? `<div class="ai-exp-wrap" id="EW${id}">
+      <button class="ai-exp-btn" id="EB${id}" onclick="loadExpl('${id}',${q.answer},this)">🤖 AI 해설 보기</button>
+      <div class="ai-exp-body" id="EB_body${id}" style="display:none"></div>
+    </div>` : ''}
     <div class="gmark" id="GM${id}"></div>
   </div>`;
 }
@@ -638,24 +775,5 @@ selSubj('재무회계');
 // persistent storage에서 저장된 풀이 데이터 로드
 loadStorage();
 </script>
-  // 1. 답안 클릭/제출 시 즉시 자동 저장
-  const origSubmitAns = window.submitAns;
-  if (typeof origSubmitAns === 'function') {
-    window.submitAns = function(qId) {
-      origSubmitAns(qId);
-      if (typeof saveStorage === 'function') saveStorage();
-    };
-  }
-
-  // 2. 모바일 Safari(아이패드/아이폰) 탭 이동 및 새로고침 시 자동 저장
-  window.addEventListener('pagehide', () => {
-    if (typeof saveStorage === 'function') saveStorage();
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && typeof saveStorage === 'function') {
-      saveStorage();
-    }
-  });
 </body>
 </html>
