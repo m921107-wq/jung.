@@ -261,38 +261,34 @@ let _storageReady = false;
 // ── AI 해설 ──
 const EXPL_CACHE = {}; // qid → 해설 텍스트 캐시
 
+function toggleExpl(id, bodyEl, btn){
+  const shown = bodyEl.style.display !== 'none';
+  bodyEl.style.display = shown ? 'none' : 'block';
+  btn.textContent = shown ? '✅ AI 해설 보기' : '✅ AI 해설 닫기';
+}
+
+function renderMd(text){
+  // marked 없을 경우 간단한 마크다운 렌더
+  if(typeof marked !== 'undefined'){
+    return marked.parse ? marked.parse(text) : marked(text);
+  }
+  return text
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
 async function loadExpl(id, answer, btn){
   const bodyEl = document.getElementById('EB_body'+id);
   if(!bodyEl) return;
 
-  // 이미 캐시된 해설
-  if(EXPL_CACHE[id]){
-    bodyEl.style.display='block';
-    bodyEl.innerHTML = marked(EXPL_CACHE[id]);
-    btn.textContent='✅ AI 해설 닫기';
-    btn.classList.add('done');
-    btn.onclick = ()=>{
-      const shown = bodyEl.style.display!=='none';
-      bodyEl.style.display = shown?'none':'block';
-      btn.textContent = shown?'✅ AI 해설 보기':'✅ AI 해설 닫기';
-    };
-    return;
-  }
-
-  // 문제 텍스트 찾기
   const cardEl = document.getElementById('C'+id);
-  const qbody = cardEl?.querySelector('.qbody')?.innerText||'';
-  const choices = cardEl?.querySelector('.choices')?.innerText||'';
-  const st = ST[id]||{};
-  const userSel = st.sel||'?';
+  const qbody  = cardEl?.querySelector('.qbody')?.innerText  || '';
+  const choices = cardEl?.querySelector('.choices')?.innerText || '';
+  const userSel = (ST[id]||{}).sel || '?';
 
-  btn.disabled = true;
-  btn.textContent = '⏳ AI 해설 생성 중...';
-  bodyEl.style.display = 'block';
-  bodyEl.innerHTML = '<span class="ai-cursor"></span>';
-
-  const prompt = `당신은 재경관리사(재무회계·세무회계·원가관리회계) 전문 강사입니다.
-아래 문제에 대해 수험생이 틀렸습니다. 상세한 해설을 작성해주세요.
+  const prompt =
+`재경관리사 오답 문제 해설을 부탁드립니다.
 
 [문제]
 ${qbody}
@@ -300,75 +296,44 @@ ${qbody}
 [선택지]
 ${choices}
 
-[정답] ${answer}번
-[수험생 선택] ${userSel}번 (오답)
+[정답] ${answer}번 / [내가 선택] ${userSel}번 (오답)
 
-다음 형식으로 해설해주세요:
+아래 형식으로 상세하게 해설해주세요:
 ## ✅ 정답: ${answer}번
-
 ## 📌 핵심 개념
-(이 문제와 관련된 핵심 회계/세무/원가 개념 설명)
-
 ## 🔍 정답 해설
-(왜 ${answer}번이 정답인지 상세 설명)
+## ❌ 오답 분석 (내가 선택한 ${userSel}번이 왜 틀렸는지)
+## 💡 출제 포인트`;
 
-## ❌ 오답 분석
-(수험생이 선택한 ${userSel}번이 왜 틀렸는지 설명)
+  try { await navigator.clipboard.writeText(prompt); } catch(_){}
 
-## 💡 출제 포인트
-(이 유형에서 자주 나오는 함정 또는 기억할 공식/원칙)`;
+  bodyEl.style.display = 'block';
+  bodyEl.innerHTML = `
+    <div style="padding:14px;background:#f0f7ff;border:1.5px solid #1a73e8;border-radius:10px;font-size:13px;line-height:1.8;">
+      <div style="font-weight:700;color:#1a73e8;margin-bottom:8px;">📋 Claude에 질문할 내용이 복사되었어요!</div>
+      <div style="color:#444;margin-bottom:12px;">아래 버튼으로 Claude 새 채팅을 열고 붙여넣기(Ctrl+V) 하세요.</div>
+      <a href="https://claude.ai/new" target="_blank"
+        style="display:block;text-align:center;padding:10px;background:#1a73e8;color:#fff;
+        border-radius:8px;font-weight:600;text-decoration:none;margin-bottom:8px;">
+        🤖 Claude.ai 새 채팅 열기 →
+      </a>
+      <div style="text-align:center;color:#888;font-size:12px;">Ctrl+V (Mac: ⌘V) 로 붙여넣기하면 바로 해설을 받을 수 있어요</div>
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;color:#999;font-size:11px;">복사된 내용 확인</summary>
+        <pre style="margin-top:6px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:6px;
+          font-size:11px;white-space:pre-wrap;word-break:break-all;color:#333;max-height:180px;overflow-y:auto;">${prompt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+      </details>
+    </div>`;
 
-  let full = '';
-  try{
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1200,
-        stream:true,
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    bodyEl.innerHTML = '<span class="ai-cursor"></span>';
-
-    while(true){
-      const {done,value} = await reader.read();
-      if(done) break;
-      const chunk = dec.decode(value);
-      for(const line of chunk.split('\n')){
-        if(!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if(data==='[DONE]') break;
-        try{
-          const j = JSON.parse(data);
-          if(j.type==='content_block_delta'&&j.delta?.text){
-            full += j.delta.text;
-            bodyEl.innerHTML = marked(full) + '<span class="ai-cursor"></span>';
-            bodyEl.scrollTop = bodyEl.scrollHeight;
-          }
-        }catch(_){}
-      }
-    }
-    bodyEl.innerHTML = marked(full);
-    EXPL_CACHE[id] = full;
-    btn.disabled = false;
-    btn.textContent = '✅ AI 해설 닫기';
-    btn.classList.add('done');
-    btn.onclick = ()=>{
-      const shown = bodyEl.style.display!=='none';
-      bodyEl.style.display = shown?'none':'block';
-      btn.textContent = shown?'✅ AI 해설 보기':'✅ AI 해설 닫기';
-    };
-  } catch(e){
-    bodyEl.innerHTML = `<span style="color:var(--red)">해설 생성 중 오류가 발생했습니다. 다시 시도해주세요.<br><small>${e.message}</small></span>`;
-    btn.disabled = false;
-    btn.textContent = '🔄 다시 시도';
-  }
+  btn.textContent = '📋 다시 복사';
+  btn.classList.add('done');
+  btn.onclick = async () => {
+    try { await navigator.clipboard.writeText(prompt); } catch(_){}
+    btn.textContent = '✅ 복사됨!';
+    setTimeout(()=>{ btn.textContent = '📋 다시 복사'; }, 1500);
+  };
 }
+
 
 async function saveST(){
   try{ await window.storage.set('jk4', JSON.stringify(ST)); }
