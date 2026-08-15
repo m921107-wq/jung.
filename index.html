@@ -638,5 +638,24 @@ selSubj('재무회계');
 // persistent storage에서 저장된 풀이 데이터 로드
 loadStorage();
 </script>
+  // 1. 답안 클릭/제출 시 즉시 자동 저장
+  const origSubmitAns = window.submitAns;
+  if (typeof origSubmitAns === 'function') {
+    window.submitAns = function(qId) {
+      origSubmitAns(qId);
+      if (typeof saveStorage === 'function') saveStorage();
+    };
+  }
+
+  // 2. 모바일 Safari(아이패드/아이폰) 탭 이동 및 새로고침 시 자동 저장
+  window.addEventListener('pagehide', () => {
+    if (typeof saveStorage === 'function') saveStorage();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && typeof saveStorage === 'function') {
+      saveStorage();
+    }
+  });
 </body>
 </html>
