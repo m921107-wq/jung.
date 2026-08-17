@@ -67,6 +67,16 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
 #bwrong.on{background:var(--red);border-color:var(--red);color:#fff;}
 
 /* AI 해설 */
+/* 오답 재풀이 체크 */
+.recheck-wrap{display:flex;align-items:center;gap:8px;padding:0 12px 10px;}
+.recheck-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;
+  border:1.5px solid var(--g3);background:#fff;font-size:13px;font-weight:600;
+  cursor:pointer;color:var(--g6);transition:.15s;}
+.recheck-btn:hover{border-color:#34a853;color:#34a853;}
+.recheck-btn.checked{background:#34a853;border-color:#34a853;color:#fff;}
+.recheck-badge{position:absolute;top:10px;left:10px;background:#34a853;color:#fff;
+  font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;z-index:2;}
+
 .ai-exp-wrap{padding:0 12px 12px;}
 .ai-exp-btn{width:100%;padding:9px;border:1.5px dashed var(--red);border-radius:10px;
   font-size:13px;font-weight:600;color:var(--red);background:var(--red-lt);
@@ -254,8 +264,9 @@ const MORD  = ['1','3','5','6','7','9','11','12'];
 const CIRC  = ['①','②','③','④'];
 
 let curS=null, curC=null, curY='all', curF='all', srchQ='';
-const ST  = {}; // {id:{sel,sub}} - persistent storage에서 로드
-const CVD = {}; // {id:dataURL}
+const ST   = {}; // {id:{sel,sub}} - persistent storage에서 로드
+const CVD  = {}; // {id:dataURL}
+const CHCK = {}; // {id: true} - 오답 재풀이 체크 여부
 let _storageReady = false;
 
 // ── AI 해설 ──
@@ -343,23 +354,55 @@ async function saveCVD(){
   try{ await window.storage.set('jk4cv', JSON.stringify(CVD)); }
   catch(e){ try{localStorage.setItem('jk4cv',JSON.stringify(CVD));}catch(_){} }
 }
+function toggleChck(id){
+  CHCK[id] = !CHCK[id];
+  saveChck();
+  // 버튼 즉시 업데이트
+  const btn = document.getElementById('RCK'+id);
+  if(btn){
+    btn.className = 'recheck-btn' + (CHCK[id] ? ' checked' : '');
+    btn.textContent = CHCK[id] ? '✅ 다시 풀었어요' : '☐ 다시 풀었어요';
+  }
+  // 뱃지 토글
+  const card = document.getElementById('C'+id);
+  if(card){
+    let badge = card.querySelector('.recheck-badge');
+    if(CHCK[id] && !badge){
+      badge = document.createElement('div');
+      badge.className = 'recheck-badge';
+      badge.textContent = '✅ 재풀이 완료';
+      card.appendChild(badge);
+    } else if(!CHCK[id] && badge){
+      badge.remove();
+    }
+  }
+}
+
+async function saveChck(){
+  try{ await window.storage.set('jk4chck', JSON.stringify(CHCK)); }
+  catch(e){ try{localStorage.setItem('jk4chck',JSON.stringify(CHCK));}catch(_){} }
+}
+
 async function loadStorage(){
   try{
     const r1 = await window.storage.get('jk4');
     const r2 = await window.storage.get('jk4cv');
-    if(r1){ Object.assign(ST,  JSON.parse(r1.value||'{}')); }
-    if(r2){ Object.assign(CVD, JSON.parse(r2.value||'{}')); }
+    const r3 = await window.storage.get('jk4chck');
+    if(r1){ Object.assign(ST,   JSON.parse(r1.value||'{}')); }
+    if(r2){ Object.assign(CVD,  JSON.parse(r2.value||'{}')); }
+    if(r3){ Object.assign(CHCK, JSON.parse(r3.value||'{}')); }
   } catch(e){
-    // fallback to localStorage
     try{
       const s1=localStorage.getItem('jk4');
       const s2=localStorage.getItem('jk4cv');
-      if(s1) Object.assign(ST,  JSON.parse(s1));
-      if(s2) Object.assign(CVD, JSON.parse(s2));
+      const s3=localStorage.getItem('jk4chck');
+      if(s1) Object.assign(ST,   JSON.parse(s1));
+      if(s2) Object.assign(CVD,  JSON.parse(s2));
+      if(s3) Object.assign(CHCK, JSON.parse(s3));
     } catch(_){}
   }
   _storageReady = true;
-  renderQs(); // 저장 데이터 로드 후 재렌더
+  renderQs();
 }
 
 // 펜
@@ -516,10 +559,18 @@ function cardHTML(q,tag,clr){
       <span class="abox" id="A${id}">정답 ${q.answer}번</span>
       <button class="rst-btn" onclick="resetCard('${id}')">↺ 초기화</button>
     </div>
-    ${curS_wrong ? `<div class="ai-exp-wrap" id="EW${id}">
+    ${curS_wrong ? `
+    <div class="recheck-wrap">
+      <button class="recheck-btn${CHCK[id]?' checked':''}" id="RCK${id}" onclick="toggleChck('${id}')">
+        ${CHCK[id] ? '✅ 다시 풀었어요' : '☐ 다시 풀었어요'}
+      </button>
+    </div>
+    <div class="ai-exp-wrap" id="EW${id}">
       <button class="ai-exp-btn" id="EB${id}" onclick="loadExpl('${id}',${q.answer},this)">🤖 AI 해설 보기</button>
       <div class="ai-exp-body" id="EB_body${id}" style="display:none"></div>
-    </div>` : ''}
+    </div>
+    ${CHCK[id] ? `<div class="recheck-badge">✅ 재풀이 완료</div>` : ''}
+    ` : ''}
     <div class="gmark" id="GM${id}"></div>
   </div>`;
 }
