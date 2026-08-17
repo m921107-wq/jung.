@@ -559,7 +559,7 @@ function cardHTML(q,tag,clr){
       <span class="abox" id="A${id}">정답 ${q.answer}번</span>
       <button class="rst-btn" onclick="resetCard('${id}')">↺ 초기화</button>
     </div>
-    ${curS_wrong ? `
+    ${(curS_wrong || curF==='wrong') ? `
     <div class="recheck-wrap">
       <button class="recheck-btn${CHCK[id]?' checked':''}" id="RCK${id}" onclick="toggleChck('${id}')">
         ${CHCK[id] ? '✅ 다시 풀었어요' : '☐ 다시 풀었어요'}
