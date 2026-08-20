@@ -76,6 +76,9 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
 .recheck-btn.checked{background:#34a853;border-color:#34a853;color:#fff;}
 .recheck-badge{position:absolute;top:10px;left:10px;background:#34a853;color:#fff;
   font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;z-index:2;}
+.freq-badge{position:absolute;top:10px;right:10px;background:#c0392b;color:#fff;
+  font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;z-index:2;}
+#stab-freq.on{background:#c0392b;color:#fff;}
 
 .ai-exp-wrap{padding:0 12px 12px;}
 .ai-exp-btn{width:100%;padding:9px;border:1.5px dashed var(--red);border-radius:10px;
@@ -206,6 +209,7 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
     <div class="stab tax" onclick="selSubj('세무회계')">세무회계</div>
     <div class="stab cst" onclick="selSubj('원가관리회계')">원가</div>
     <div class="stab" id="stab-wrong" onclick="selWrongAll()" style="color:var(--red)">오답</div>
+    <div class="stab" id="stab-freq" onclick="selFreqAll()" style="color:#c0392b;font-weight:700">🔴자주틀림</div>
   </div>
   <div id="ch-list"></div>
 </div>
@@ -267,6 +271,7 @@ let curS=null, curC=null, curY='all', curF='all', srchQ='';
 const ST   = {}; // {id:{sel,sub}} - persistent storage에서 로드
 const CVD  = {}; // {id:dataURL}
 const CHCK = {}; // {id: true} - 오답 재풀이 체크 여부
+const FREQ = {}; // {id: true} - 자주 틀리는 문제
 let _storageReady = false;
 
 // ── AI 해설 ──
@@ -382,23 +387,31 @@ async function saveChck(){
   try{ await window.storage.set('jk4chck', JSON.stringify(CHCK)); }
   catch(e){ try{localStorage.setItem('jk4chck',JSON.stringify(CHCK));}catch(_){} }
 }
+async function saveFreq(){
+  try{ await window.storage.set('jk4freq', JSON.stringify(FREQ)); }
+  catch(e){ try{localStorage.setItem('jk4freq',JSON.stringify(FREQ));}catch(_){} }
+}
 
 async function loadStorage(){
   try{
     const r1 = await window.storage.get('jk4');
     const r2 = await window.storage.get('jk4cv');
     const r3 = await window.storage.get('jk4chck');
+    const r4 = await window.storage.get('jk4freq');
     if(r1){ Object.assign(ST,   JSON.parse(r1.value||'{}')); }
     if(r2){ Object.assign(CVD,  JSON.parse(r2.value||'{}')); }
     if(r3){ Object.assign(CHCK, JSON.parse(r3.value||'{}')); }
+    if(r4){ Object.assign(FREQ, JSON.parse(r4.value||'{}')); }
   } catch(e){
     try{
       const s1=localStorage.getItem('jk4');
       const s2=localStorage.getItem('jk4cv');
       const s3=localStorage.getItem('jk4chck');
+      const s4=localStorage.getItem('jk4freq');
       if(s1) Object.assign(ST,   JSON.parse(s1));
       if(s2) Object.assign(CVD,  JSON.parse(s2));
       if(s3) Object.assign(CHCK, JSON.parse(s3));
+      if(s4) Object.assign(FREQ, JSON.parse(s4));
     } catch(_){}
   }
   _storageReady = true;
@@ -420,11 +433,12 @@ function closeSB(){
 }
 
 function selSubj(s){
-  curS=s; curC=null; curS_wrong=false;
+  curS=s; curC=null; curS_wrong=false; curS_freq=false;
   document.querySelectorAll('.stab').forEach((el,i)=>{
     el.className='stab '+(['fin','tax','cst',''][i]||'')+(['재무회계','세무회계','원가관리회계'][i]===s?' on':'');
   });
   document.getElementById('stab-wrong').classList.remove('on');
+  if(document.getElementById('stab-freq')) document.getElementById('stab-freq').classList.remove('on');
   renderChs(); renderQs();
 }
 
@@ -442,7 +456,7 @@ function renderChs(){
 }
 
 function selCh(ch){
-  curC=ch; curF='all'; curS_wrong=false;
+  curC=ch; curF='all'; curS_wrong=false; curS_freq=false;
   document.getElementById('btodo').classList.remove('on');
   document.getElementById('bdone').classList.remove('on');
   document.getElementById('bwrong').classList.remove('on');
@@ -452,11 +466,23 @@ function selCh(ch){
 }
 
 let curS_wrong=false;
+let curS_freq=false;
 function selWrongAll(){
-  curS_wrong=true; curC=null; curF='all';
-  // 과목 탭 선택 해제
+  curS_wrong=true; curS_freq=false; curC=null; curF='all';
   document.querySelectorAll('#stabs .stab').forEach(el=>el.classList.remove('on'));
   document.getElementById('stab-wrong').classList.add('on');
+  document.getElementById('ch-list').innerHTML='';
+  document.getElementById('btodo').classList.remove('on');
+  document.getElementById('bdone').classList.remove('on');
+  document.getElementById('bwrong').classList.remove('on');
+  renderQs();
+  if(window.innerWidth<=680) closeSB();
+}
+
+function selFreqAll(){
+  curS_freq=true; curS_wrong=false; curC=null; curF='all';
+  document.querySelectorAll('#stabs .stab').forEach(el=>el.classList.remove('on'));
+  document.getElementById('stab-freq').classList.add('on');
   document.getElementById('ch-list').innerHTML='';
   document.getElementById('btodo').classList.remove('on');
   document.getElementById('bdone').classList.remove('on');
@@ -488,6 +514,15 @@ function onSearch(){
 
 // ── 문제 가져오기 ──
 function getQs(){
+  if(curS_freq){
+    // 모든 과목에서 자주 틀리는 문제만 수집
+    let all=[];
+    ['재무회계','세무회계','원가관리회계'].forEach(s=>{
+      Object.values(DATA[s]||{}).forEach(qs=>all.push(...qs));
+    });
+    return all.filter(q=>FREQ[qid(q)])
+              .filter(q=>curY==='all'||q.year===curY);
+  }
   if(curS_wrong){
     // 모든 과목에서 오답만 수집
     let all=[];
@@ -516,7 +551,7 @@ function renderQs(){
     document.getElementById('ch-ttl').textContent='챕터를 선택하세요';
     return;
   }
-  const nm=curS_wrong?`🔴 오답 모음 (전체)`:srchQ?`🔍 "${srchQ}"`:curC?curC.replace(/^\d+_/,''):'';
+  const nm=curS_freq?`🔴 자주 틀리는 문제`:curS_wrong?`❌ 오답 모음 (전체)`:srchQ?`🔍 "${srchQ}"`:curC?curC.replace(/^\d+_/,''):'';
   document.getElementById('ch-ttl').textContent=nm;
 
   let show=all;
@@ -526,8 +561,8 @@ function renderQs(){
 
   updProg(all,clr);
 
-  const emptyMsg={done:'아직 완료한 문제가 없어요',todo:'모든 문제를 완료했어요!',wrong:'오답이 없어요 🎉',all:'문제가 없어요'};
-  const emptyIcon={done:'📝',todo:'🎉',wrong:'✅',all:'📭'};
+  const emptyMsg={done:'아직 완료한 문제가 없어요',todo:'모든 문제를 완료했어요!',wrong:'오답이 없어요 🎉',freq:'자주 틀리는 문제가 없어요 🎉',all:'문제가 없어요'};
+  const emptyIcon={done:'📝',todo:'🎉',wrong:'✅',freq:'🏆',all:'📭'};
   if(!show.length){
     wrap.innerHTML=`<div class="empty"><div class="empty-icon">${emptyIcon[curF]||'📭'}</div>${emptyMsg[curF]||''}</div>`;
     return;
@@ -559,7 +594,7 @@ function cardHTML(q,tag,clr){
       <span class="abox" id="A${id}">정답 ${q.answer}번</span>
       <button class="rst-btn" onclick="resetCard('${id}')">↺ 초기화</button>
     </div>
-    ${(curS_wrong || curF==='wrong') ? `
+    ${(curS_wrong || curS_freq || curF==='wrong') ? `
     <div class="recheck-wrap">
       <button class="recheck-btn${CHCK[id]?' checked':''}" id="RCK${id}" onclick="toggleChck('${id}')">
         ${CHCK[id] ? '✅ 다시 풀었어요' : '☐ 다시 풀었어요'}
@@ -570,6 +605,7 @@ function cardHTML(q,tag,clr){
       <div class="ai-exp-body" id="EB_body${id}" style="display:none"></div>
     </div>
     ${CHCK[id] ? `<div class="recheck-badge">✅ 재풀이 완료</div>` : ''}
+    ${FREQ[id] ? `<div class="freq-badge">🔴 자주 틀리는 문제</div>` : ''}
     ` : ''}
     <div class="gmark" id="GM${id}"></div>
   </div>`;
@@ -631,9 +667,23 @@ function selChoice(id, n, answer){
 
 function submit(id, answer){
   const st=ST[id]||{}; if(!st.sel) return;
+  const wrong = (st.sel !== answer);
   st.sub=true; ST[id]=st; saveST();
   applyGrade(id, st.sel, answer, true);
   updProgNow();
+  // 재풀이(체크된 문제) 후 또 틀리면 → 자주 틀리는 문제로 자동 등록
+  if(wrong && CHCK[id] && !FREQ[id]){
+    FREQ[id] = true;
+    saveFreq();
+    // 카드에 자주틀림 뱃지 추가
+    const card = document.getElementById('C'+id);
+    if(card && !card.querySelector('.freq-badge')){
+      const badge = document.createElement('div');
+      badge.className = 'freq-badge';
+      badge.textContent = '🔴 자주 틀리는 문제';
+      card.appendChild(badge);
+    }
+  }
 }
 
 function applyGrade(id, sel, answer, animate){
