@@ -78,6 +78,10 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
   font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;z-index:2;}
 .freq-badge{position:absolute;top:10px;right:10px;background:#c0392b;color:#fff;
   font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;z-index:2;}
+.q-date{font-size:11px;color:#888;margin-left:auto;}
+.ch-group-header{margin:18px 0 6px;padding:8px 12px;background:linear-gradient(90deg,var(--g1),transparent);
+  border-left:3px solid currentColor;font-size:12px;font-weight:700;border-radius:0 6px 6px 0;}
+.ch-group-header .ch-group-sub{font-size:11px;color:#888;font-weight:400;margin-left:6px;}
 #stab-freq.on{background:#c0392b;color:#fff;}
 
 .ai-exp-wrap{padding:0 12px 12px;}
@@ -568,20 +572,61 @@ function renderQs(){
     return;
   }
 
-  wrap.innerHTML = show.map(q=>cardHTML(q,tag,clr)).join('') + akHTML(all,tag,clr);
+  // 오답/자주틀림 탭에서는 챕터별 그룹 헤더 삽입
+  if(curS_wrong || curS_freq){
+    // 문제→챕터 역맵 구축
+    const qChMap={};
+    ['재무회계','세무회계','원가관리회계'].forEach(s=>{
+      const sd=DATA[s]||{};
+      Object.keys(sd).forEach(ch=>{
+        sd[ch].forEach(q=>{ qChMap[qid(q)]={subj:s,ch,nm:ch.replace(/^\d+_/,'')}; });
+      });
+    });
+    const SCLR_MAP={'재무회계':'#1a73e8','세무회계':'#1e8e3e','원가관리회계':'#e37400'};
+    let html='';
+    let lastKey='';
+    show.forEach(q=>{
+      const id=qid(q);
+      const info=qChMap[id]||{subj:'',nm:''};
+      const groupKey=info.subj+'__'+info.ch;
+      if(groupKey!==lastKey){
+        const col=SCLR_MAP[info.subj]||'#888';
+        html+=`<div class="ch-group-header" style="color:${col}">
+          ${info.subj} <span class="ch-group-sub">› ${info.nm}</span>
+        </div>`;
+        lastKey=groupKey;
+      }
+      html+=cardHTML(q,STAG[info.subj]||tag,SCLR_MAP[info.subj]||clr);
+    });
+    wrap.innerHTML = html + akHTML(all,tag,clr);
+  } else {
+    wrap.innerHTML = show.map(q=>cardHTML(q,tag,clr)).join('') + akHTML(all,tag,clr);
+  }
 
   // 카드 초기화 (선택지 텍스트 채우기 + 상태 복원)
-  show.forEach(q=>initCard(q,tag));
+  if(curS_wrong || curS_freq){
+    const qChMapInit={};
+    ['재무회계','세무회계','원가관리회계'].forEach(s=>{
+      const sd=DATA[s]||{};
+      Object.keys(sd).forEach(ch=>{ sd[ch].forEach(q=>{ qChMapInit[qid(q)]=STAG[s]||tag; }); });
+    });
+    show.forEach(q=>initCard(q, qChMapInit[qid(q)]||tag));
+  } else {
+    show.forEach(q=>initCard(q,tag));
+  }
 }
 
 function qid(q){ return q.year+'_'+q.month+'_'+q.qnum; }
 
 function cardHTML(q,tag,clr){
   const id=qid(q);
+  const _st=ST[id]||{};
+  const _dateTag=_st.date?`<span class="q-date">📅 ${_st.date}</span>`:'';
   return `<div class="qcard" id="C${id}">
     <div class="qhead">
       <span class="qbadge ${tag}">${q.year}년 ${q.month}월</span>
       <span class="qsrc">문제 ${q.qnum}번</span>
+      ${_dateTag}
     </div>
     <div class="qbody-wrap">
       <div class="qbody" id="B${id}">${escH(q.text)}</div>
@@ -668,7 +713,11 @@ function selChoice(id, n, answer){
 function submit(id, answer){
   const st=ST[id]||{}; if(!st.sel) return;
   const wrong = (st.sel !== answer);
-  st.sub=true; ST[id]=st; saveST();
+  st.sub=true;
+  // 풀이 날짜 저장
+  const now=new Date();
+  st.date=`${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+  ST[id]=st; saveST();
   applyGrade(id, st.sel, answer, true);
   updProgNow();
   // 재풀이(체크된 문제) 후 또 틀리면 → 자주 틀리는 문제로 자동 등록
