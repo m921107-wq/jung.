@@ -82,6 +82,17 @@ html,body{height:100%;overflow:hidden;background:var(--g0);
 .ch-group-header{margin:18px 0 6px;padding:8px 12px;background:linear-gradient(90deg,var(--g1),transparent);
   border-left:3px solid currentColor;font-size:12px;font-weight:700;border-radius:0 6px 6px 0;}
 .ch-group-header .ch-group-sub{font-size:11px;color:#888;font-weight:400;margin-left:6px;}
+
+/* 오답 목차 */
+.wrong-toc-all{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;
+  border-bottom:1px solid var(--g2);color:var(--g7);}
+.wrong-toc-all:hover,.wrong-toc-all.on{background:var(--g9);color:#fff;}
+.wrong-toc-all .wrong-toc-cnt{font-size:11px;background:var(--g3);border-radius:10px;
+  padding:1px 7px;color:var(--g7);}
+.wrong-toc-all.on .wrong-toc-cnt{background:rgba(255,255,255,.25);color:#fff;}
+.wrong-toc-subj{padding:10px 14px 3px;font-size:10px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;opacity:.8;}
 #stab-freq.on{background:#c0392b;color:#fff;}
 
 .ai-exp-wrap{padding:0 12px 12px;}
@@ -391,6 +402,65 @@ async function saveChck(){
   try{ await window.storage.set('jk4chck', JSON.stringify(CHCK)); }
   catch(e){ try{localStorage.setItem('jk4chck',JSON.stringify(CHCK));}catch(_){} }
 }
+// ── 오답/자주틀림 목차 렌더 ──────────────────────────────────
+function renderWrongToc(){
+  const list = document.getElementById('ch-list');
+  const SCLR_MAP={'재무회계':'#1a73e8','세무회계':'#1e8e3e','원가관리회계':'#e37400'};
+  const STAG_MAP={'재무회계':'fin','세무회계':'tax','원가관리회계':'cst'};
+
+  // 어떤 문제가 해당하는지 수집
+  const pool=[];
+  ['재무회계','세무회계','원가관리회계'].forEach(s=>{
+    Object.values(DATA[s]||{}).forEach(qs=>pool.push(...qs));
+  });
+  const filtered = curS_freq
+    ? pool.filter(q=>FREQ[qid(q)])
+    : pool.filter(q=>{const st=ST[qid(q)];return st?.sub&&st?.sel!==q.answer;});
+
+  // 챕터별 카운트
+  const map={}; // subj+'__'+ch -> {subj,ch,nm,count,tag,col}
+  const qChMap={};
+  ['재무회계','세무회계','원가관리회계'].forEach(s=>{
+    const sd=DATA[s]||{};
+    Object.keys(sd).forEach(ch=>{ sd[ch].forEach(q=>{ qChMap[qid(q)]={subj:s,ch,nm:ch.replace(/^\d+_/,'')}; }); });
+  });
+  filtered.forEach(q=>{
+    const info=qChMap[qid(q)];
+    if(!info) return;
+    const key=info.subj+'__'+info.ch;
+    if(!map[key]) map[key]={...info,count:0,tag:STAG_MAP[info.subj],col:SCLR_MAP[info.subj]};
+    map[key].count++;
+  });
+
+  const groups=Object.values(map);
+  if(!groups.length){ list.innerHTML='<div style="padding:12px 14px;font-size:12px;color:#aaa;">오답 없음</div>'; return; }
+
+  // 전체 버튼 + 챕터 목록 렌더
+  let html=`<div class="wrong-toc-all${curWrongCh===null?' on':''}" onclick="selectWrongCh(null)">
+    <span>전체</span><span class="wrong-toc-cnt">${filtered.length}</span>
+  </div>`;
+  let lastSubj='';
+  groups.forEach(g=>{
+    if(g.subj!==lastSubj){
+      html+=`<div class="wrong-toc-subj" style="color:${g.col}">${g.subj}</div>`;
+      lastSubj=g.subj;
+    }
+    const isOn=(curWrongCh&&curWrongCh.subj===g.subj&&curWrongCh.ch===g.ch);
+    html+=`<div class="chi ${g.tag}${isOn?' on':''}" onclick="selectWrongCh({subj:'${g.subj.replace(/'/g,"\\'")}',ch:'${g.ch.replace(/'/g,"\\'")}'})" style="padding-left:20px">
+      <span class="chi-n">${escH(g.nm)}</span><span class="chi-c">${g.count}</span>
+    </div>`;
+  });
+  list.innerHTML=html;
+}
+
+function selectWrongCh(chObj){
+  curWrongCh=chObj;
+  renderWrongToc();   // 목차 on 상태 갱신
+  renderQs();
+  if(window.innerWidth<=680) closeSB();
+}
+
+
 async function saveFreq(){
   try{ await window.storage.set('jk4freq', JSON.stringify(FREQ)); }
   catch(e){ try{localStorage.setItem('jk4freq',JSON.stringify(FREQ));}catch(_){} }
@@ -437,7 +507,7 @@ function closeSB(){
 }
 
 function selSubj(s){
-  curS=s; curC=null; curS_wrong=false; curS_freq=false;
+  curS=s; curC=null; curS_wrong=false; curS_freq=false; curWrongCh=null;
   document.querySelectorAll('.stab').forEach((el,i)=>{
     el.className='stab '+(['fin','tax','cst',''][i]||'')+(['재무회계','세무회계','원가관리회계'][i]===s?' on':'');
   });
@@ -460,7 +530,7 @@ function renderChs(){
 }
 
 function selCh(ch){
-  curC=ch; curF='all'; curS_wrong=false; curS_freq=false;
+  curC=ch; curF='all'; curS_wrong=false; curS_freq=false; curWrongCh=null;
   document.getElementById('btodo').classList.remove('on');
   document.getElementById('bdone').classList.remove('on');
   document.getElementById('bwrong').classList.remove('on');
@@ -471,26 +541,27 @@ function selCh(ch){
 
 let curS_wrong=false;
 let curS_freq=false;
+let curWrongCh=null; // {subj, ch} – 오답/자주틀림 목차에서 선택한 챕터
 function selWrongAll(){
-  curS_wrong=true; curS_freq=false; curC=null; curF='all';
+  curS_wrong=true; curS_freq=false; curC=null; curF='all'; curWrongCh=null;
   document.querySelectorAll('#stabs .stab').forEach(el=>el.classList.remove('on'));
   document.getElementById('stab-wrong').classList.add('on');
-  document.getElementById('ch-list').innerHTML='';
   document.getElementById('btodo').classList.remove('on');
   document.getElementById('bdone').classList.remove('on');
   document.getElementById('bwrong').classList.remove('on');
+  renderWrongToc();
   renderQs();
   if(window.innerWidth<=680) closeSB();
 }
 
 function selFreqAll(){
-  curS_freq=true; curS_wrong=false; curC=null; curF='all';
+  curS_freq=true; curS_wrong=false; curC=null; curF='all'; curWrongCh=null;
   document.querySelectorAll('#stabs .stab').forEach(el=>el.classList.remove('on'));
   document.getElementById('stab-freq').classList.add('on');
-  document.getElementById('ch-list').innerHTML='';
   document.getElementById('btodo').classList.remove('on');
   document.getElementById('bdone').classList.remove('on');
   document.getElementById('bwrong').classList.remove('on');
+  renderWrongToc();
   renderQs();
   if(window.innerWidth<=680) closeSB();
 }
@@ -519,22 +590,29 @@ function onSearch(){
 // ── 문제 가져오기 ──
 function getQs(){
   if(curS_freq){
-    // 모든 과목에서 자주 틀리는 문제만 수집
     let all=[];
     ['재무회계','세무회계','원가관리회계'].forEach(s=>{
       Object.values(DATA[s]||{}).forEach(qs=>all.push(...qs));
     });
-    return all.filter(q=>FREQ[qid(q)])
-              .filter(q=>curY==='all'||q.year===curY);
+    let res=all.filter(q=>FREQ[qid(q)]).filter(q=>curY==='all'||q.year===curY);
+    if(curWrongCh) res=res.filter(q=>{
+      const sd=DATA[curWrongCh.subj]||{};
+      return (sd[curWrongCh.ch]||[]).some(qq=>qid(qq)===qid(q));
+    });
+    return res;
   }
   if(curS_wrong){
-    // 모든 과목에서 오답만 수집
     let all=[];
     ['재무회계','세무회계','원가관리회계'].forEach(s=>{
       Object.values(DATA[s]||{}).forEach(qs=>all.push(...qs));
     });
-    return all.filter(q=>{const s=ST[qid(q)];return s?.sub&&s?.sel!==q.answer;})
-              .filter(q=>curY==='all'||q.year===curY);
+    let res=all.filter(q=>{const s=ST[qid(q)];return s?.sub&&s?.sel!==q.answer;})
+               .filter(q=>curY==='all'||q.year===curY);
+    if(curWrongCh) res=res.filter(q=>{
+      const sd=DATA[curWrongCh.subj]||{};
+      return (sd[curWrongCh.ch]||[]).some(qq=>qid(qq)===qid(q));
+    });
+    return res;
   }
   if(srchQ){
     let all=[]; Object.values(DATA[curS]||{}).forEach(qs=>all.push(...qs));
@@ -555,7 +633,11 @@ function renderQs(){
     document.getElementById('ch-ttl').textContent='챕터를 선택하세요';
     return;
   }
-  const nm=curS_freq?`🔴 자주 틀리는 문제`:curS_wrong?`❌ 오답 모음 (전체)`:srchQ?`🔍 "${srchQ}"`:curC?curC.replace(/^\d+_/,''):'';
+  const _wrongLabel = curWrongCh
+    ? `${curWrongCh.subj} › ${curWrongCh.ch.replace(/^\d+_/,'')}`
+    : curS_freq ? '🔴 자주 틀리는 문제 (전체)' : '❌ 오답 (전체)';
+  const nm=(curS_freq||curS_wrong)?_wrongLabel:srchQ?`🔍 "${srchQ}"`:curC?curC.replace(/^\d+_/,''):'';
+
   document.getElementById('ch-ttl').textContent=nm;
 
   let show=all;
@@ -573,7 +655,7 @@ function renderQs(){
   }
 
   // 오답/자주틀림 탭에서는 챕터별 그룹 헤더 삽입
-  if(curS_wrong || curS_freq){
+  if((curS_wrong || curS_freq) && !curWrongCh){
     // 문제→챕터 역맵 구축
     const qChMap={};
     ['재무회계','세무회계','원가관리회계'].forEach(s=>{
@@ -600,17 +682,22 @@ function renderQs(){
     });
     wrap.innerHTML = html + akHTML(all,tag,clr);
   } else {
-    wrap.innerHTML = show.map(q=>cardHTML(q,tag,clr)).join('') + akHTML(all,tag,clr);
+    // 챕터 선택 상태이거나 일반 뷰
+    const _tag2 = (curS_wrong||curS_freq)&&curWrongCh ? (STAG[curWrongCh.subj]||tag) : tag;
+    const _clr2 = (curS_wrong||curS_freq)&&curWrongCh ? ({'재무회계':'#1a73e8','세무회계':'#1e8e3e','원가관리회계':'#e37400'}[curWrongCh.subj]||clr) : clr;
+    wrap.innerHTML = show.map(q=>cardHTML(q,_tag2,_clr2)).join('') + akHTML(all,_tag2,_clr2);
   }
 
   // 카드 초기화 (선택지 텍스트 채우기 + 상태 복원)
-  if(curS_wrong || curS_freq){
+  if((curS_wrong || curS_freq) && !curWrongCh){
     const qChMapInit={};
     ['재무회계','세무회계','원가관리회계'].forEach(s=>{
       const sd=DATA[s]||{};
       Object.keys(sd).forEach(ch=>{ sd[ch].forEach(q=>{ qChMapInit[qid(q)]=STAG[s]||tag; }); });
     });
     show.forEach(q=>initCard(q, qChMapInit[qid(q)]||tag));
+  } else if((curS_wrong||curS_freq) && curWrongCh){
+    show.forEach(q=>initCard(q, STAG[curWrongCh.subj]||tag));
   } else {
     show.forEach(q=>initCard(q,tag));
   }
