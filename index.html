@@ -744,14 +744,15 @@ function renderQs(){
         </div>`;
         lastKey=groupKey;
       }
-      html+=cardHTML(q,STAG[info.subj]||tag,SCLR_MAP[info.subj]||clr);
+      html+=cardHTML(q,STAG[info.subj]||tag,SCLR_MAP[info.subj]||clr,true);
     });
     wrap.innerHTML = html + akHTML(all,tag,clr);
   } else {
     // 챕터 선택 상태이거나 일반 뷰
     const _tag2 = (curS_wrong||curS_freq)&&curWrongCh ? (STAG[curWrongCh.subj]||tag) : tag;
     const _clr2 = (curS_wrong||curS_freq)&&curWrongCh ? ({'재무회계':'#1a73e8','세무회계':'#1e8e3e','원가관리회계':'#e37400'}[curWrongCh.subj]||clr) : clr;
-    wrap.innerHTML = show.map(q=>cardHTML(q,_tag2,_clr2)).join('') + akHTML(all,_tag2,_clr2);
+    const _practice2 = !!(curS_wrong||curS_freq);
+    wrap.innerHTML = show.map(q=>cardHTML(q,_tag2,_clr2,_practice2)).join('') + akHTML(all,_tag2,_clr2);
   }
 
   // 카드 초기화 (선택지 텍스트 채우기 + 상태 복원)
@@ -761,9 +762,9 @@ function renderQs(){
       const sd=DATA[s]||{};
       Object.keys(sd).forEach(ch=>{ sd[ch].forEach(q=>{ qChMapInit[qid(q)]=STAG[s]||tag; }); });
     });
-    show.forEach(q=>initCard(q, qChMapInit[qid(q)]||tag));
+    show.forEach(q=>initCard(q, qChMapInit[qid(q)]||tag, true));
   } else if((curS_wrong||curS_freq) && curWrongCh){
-    show.forEach(q=>initCard(q, STAG[curWrongCh.subj]||tag));
+    show.forEach(q=>initCard(q, STAG[curWrongCh.subj]||tag, true));
   } else {
     show.forEach(q=>initCard(q,tag));
   }
@@ -771,11 +772,11 @@ function renderQs(){
 
 function qid(q){ return q.year+'_'+q.month+'_'+q.qnum; }
 
-function cardHTML(q,tag,clr){
+function cardHTML(q,tag,clr,practice){
   const id=qid(q);
   const _st=ST[id]||{};
   const _dateTag=_st.date?`<span class="q-date">📅 ${_st.date}</span>`:'';
-  return `<div class="qcard" id="C${id}">
+  return `<div class="qcard" id="C${id}" data-practice="${practice?1:0}">
     <div class="qhead">
       <span class="qbadge ${tag}">${q.year}년 ${q.month}월</span>
       <span class="qsrc">문제 ${q.qnum}번</span>
@@ -810,8 +811,8 @@ function cardHTML(q,tag,clr){
   </div>`;
 }
 
-function initCard(q,tag){
-  const id=qid(q), st=ST[id]||{};
+function initCard(q,tag,blankMode){
+  const id=qid(q), st=blankMode?{}:(ST[id]||{});
   // 선택지 파싱
   const choices=parseChoices(q.text);
   const chWrap=document.getElementById('CH'+id);
@@ -826,7 +827,7 @@ function initCard(q,tag){
   // 채점 버튼 상태
   const sbtn=document.getElementById('S'+id);
   if(sbtn) sbtn.disabled=!st.sel;
-  // 채점 결과 복원
+  // 채점 결과 복원 (blankMode면 복원 안 함 - 오답 재풀이는 항상 깨끗하게 시작)
   if(st.sub) applyGrade(id, st.sel, q.answer, false);
   // 캔버스 초기화
   initCv(id);
@@ -851,7 +852,10 @@ function parseChoices(text){
 }
 
 function selChoice(id, n, answer){
-  const st=ST[id]||{}; if(st.sub) return;
+  const st=ST[id]||{};
+  const card=document.getElementById('C'+id);
+  const practice = card?.dataset.practice === '1';
+  if(st.sub && !practice) return;
   st.sel=(st.sel===n)?null:n;
   ST[id]=st; saveST();
   // 선택지 UI 업데이트
@@ -961,8 +965,9 @@ function resetCard(id){
   }
   const card=document.getElementById('C'+id);
   if(card){
-    card.outerHTML=cardHTML(q,tag,clr);
-    initCard(q,tag);
+    const practice = curS_wrong || curS_freq;
+    card.outerHTML=cardHTML(q,tag,clr,practice);
+    initCard(q,tag,practice);
     updProgNow();
   }
 }
