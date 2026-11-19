@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>스토리메이커 | 직접 만드는 즐거움</title>
+<meta name="description" content="웨딩 식전영상, 성장영상, 영상편지, 감사영상을 템플릿으로 쉽고 빠르게 직접 만드는 영상 제작 서비스">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="hd">
+  <div class="hd-in">
+    <a class="logo" href="#/"><b>STORY</b> maker.</a>
+    <nav id="gnb" aria-label="주메뉴"></nav>
+    <div class="hd-tools">
+      <button class="icon-btn" id="btnSearch" aria-label="검색">🔍</button>
+      <button class="icon-btn" id="btnCart" aria-label="장바구니">🛒<span id="cartCnt" class="cnt" hidden>0</span></button>
+      <button class="icon-btn" id="btnUser" aria-label="로그인">👤</button>
+      <button class="icon-btn burger" id="btnMenu" aria-label="메뉴">☰</button>
+    </div>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer id="ft"></footer>
+
+<div class="dim" id="dim" hidden></div>
+
+<aside class="drawer" id="cartDrawer" aria-label="장바구니" hidden>
+  <div class="drawer-hd"><b>장바구니</b><button class="x" data-close>✕</button></div>
+  <div class="drawer-bd" id="cartBody"></div>
+  <div class="drawer-ft">
+    <div class="sum"><span>합계</span><b id="cartSum">0원</b></div>
+    <button class="btn dark block" id="btnCheckout">주문하기</button>
+  </div>
+</aside>
+
+<div class="modal" id="authModal" role="dialog" aria-modal="true" hidden>
+  <div class="modal-box">
+    <button class="x" data-close>✕</button>
+    <div class="tabs2"><button class="on" data-tab="login">로그인</button><button data-tab="join">회원가입</button></div>
+    <form id="authForm">
+      <label>이메일<input type="email" required placeholder="example@email.com"></label>
+      <label>비밀번호<input type="password" required minlength="4" placeholder="4자 이상"></label>
+      <label class="joinOnly" hidden>이름<input type="text" placeholder="홍길동"></label>
+      <button class="btn dark block" type="submit">로그인</button>
+      <p class="hint">데모 사이트입니다. 입력한 정보는 서버로 전송되지 않습니다.</p>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="searchModal" role="dialog" aria-modal="true" hidden>
+  <div class="modal-box wide">
+    <button class="x" data-close>✕</button>
+    <form id="searchForm"><input id="searchInput" placeholder="상품명 또는 키워드를 입력하세요" autocomplete="off"><button class="btn dark">검색</button></form>
+    <div class="kw">인기: <a href="#/list?q=웨딩">웨딩</a><a href="#/list?q=돌잔치">돌잔치</a><a href="#/list?q=부모님">부모님</a><a href="#/list?q=오프닝">오프닝</a></div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
